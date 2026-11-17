@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DocAssist Study</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #f4f5f7; color: #1d1f23; line-height: 1.5; }
+  #app { max-width: 1150px; margin: 0 auto; padding: 24px; }
+  .card { background: #fff; border: 1px solid #e1e3e8; border-radius: 10px; padding: 28px 32px; max-width: 720px; margin: 40px auto; }
+  h1 { font-size: 1.5rem; margin-top: 0; } h2 { font-size: 1.2rem; margin-top: 0; } h3 { font-size: 1.05rem; margin-top: 0; }
+  button { font: inherit; padding: 10px 18px; border-radius: 8px; border: none; background: #2f5bd3; color: #fff; cursor: pointer; margin-top: 14px; }
+  button:hover { background: #2549ad; }
+  button.secondary { background: #e9ecf3; color: #1d1f23; }
+  button.link { background: none; color: #2f5bd3; padding: 0; margin: 8px 0 0; text-decoration: underline; }
+  input[type=text], select, textarea { font: inherit; padding: 8px 10px; border: 1px solid #c9ccd4; border-radius: 6px; width: 100%; }
+  textarea { min-height: 120px; }
+  .progress { font-size: .85rem; color: #666; margin-bottom: 10px; }
+  .task { display: grid; grid-template-columns: 1.1fr 1fr; gap: 20px; align-items: start; }
+  .doc { background: #fff; border: 1px solid #e1e3e8; border-radius: 10px; padding: 22px 24px; height: 72vh; overflow-y: auto; }
+  .doc p { padding: 4px 6px; border-radius: 4px; transition: background .4s; }
+  .doc p.hl { background: #fff3b0; }
+  .panel { background: #fff; border: 1px solid #e1e3e8; border-radius: 10px; padding: 22px 24px; }
+  .q { font-weight: 600; font-size: 1.05rem; margin-bottom: 14px; }
+  .ai { background: #eef3ff; border: 1px solid #c8d6fb; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
+  .ai .head { font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+  .badge { font-size: .78rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: #d9e4ff; }
+  .badge.low { background: #ffe8cc; }
+  .ai blockquote { margin: 10px 0 0; padding: 6px 10px; border-left: 3px solid #8aa6ee; background: #fff; font-style: italic; font-size: .93rem; }
+  .label { font-weight: 600; font-size: .92rem; margin: 14px 0 6px; }
+  .opt { display: block; padding: 8px 10px; border: 1px solid #e1e3e8; border-radius: 6px; margin-bottom: 6px; cursor: pointer; }
+  .opt:hover { background: #f7f8fb; }
+  .likert { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .likert label { border: 1px solid #e1e3e8; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  .ends { display: flex; justify-content: space-between; font-size: .8rem; color: #666; max-width: 420px; }
+  .item { margin-bottom: 22px; }
+  input[type=range] { width: 100%; max-width: 420px; }
+  .err { color: #b3261e; font-size: .9rem; margin-top: 8px; min-height: 1.2em; }
+  .muted { color: #666; font-size: .9rem; }
+  .researcher { border-top: 2px dashed #c9ccd4; margin-top: 24px; padding-top: 18px; }
+  /* ---- phones / small screens: stack document above the question ---- */
+  @media (max-width: 760px) {
+    #app { padding: 10px; }
+    .card { margin: 10px auto; padding: 20px 18px; }
+    .task { grid-template-columns: 1fr; gap: 12px; }
+    .doc { height: auto; max-height: 45vh; padding: 16px; }
+    .panel { padding: 16px; }
+    .opt { padding: 12px 10px; }                 /* bigger tap targets */
+    .likert { flex-wrap: nowrap; gap: 4px; }
+    .likert label { flex: 1; text-align: center; padding: 8px 0; font-size: .9rem; }
+    button { width: 100%; padding: 14px; }
+    button.link { width: auto; padding: 0; }
+    .doc p { scroll-margin: 12px; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* =====================================================================
+   DocAssist: research probe for AI over-reliance (AI-first vs Guess-first)
+   Edit TASKS below to change documents, questions and AI behaviour.
+   type: practice | correct | hedged | trap
+   correct / ai.answer = index into options (0-based)
+   ai.target = paragraph id that "Show in document" scrolls to
+   ===================================================================== */
+const TASKS = {
+  P0: { type: "practice", title: "Central Library: Borrowing Rules",
+    doc: [
+      { id: "p1", text: "Undergraduate students may borrow up to 4 books at a time for a period of 14 days." },
+      { id: "p2", text: "Graduate students may borrow up to 8 books at a time for a period of 28 days." },
+      { id: "p3", text: "Reference books, journals and theses cannot be borrowed and must be used inside the library." }
+    ],
+    question: "How many books can an undergraduate student borrow at one time?",
+    options: ["2 books", "4 books", "8 books", "There is no limit"], correct: 1, ai: null },
+
+  T1: { type: "correct", title: "Riverside University: Office of the Registrar (fictional)",
+    doc: [
+      { id: "p1", text: "<b>Notice: Course Drop Schedule, Fall 2026</b>" },
+      { id: "p2", text: "Students may drop courses through the student portal. Courses dropped on or before 27 November 2026 will not appear on the academic transcript." },
+      { id: "p3", text: "From 28 November to 4 December 2026, dropped courses will be recorded with a grade of W (Withdrawn). No course may be dropped after 4 December 2026." },
+      { id: "p4", text: "Tuition fees for dropped courses are not refundable after 15 November 2026." }
+    ],
+    question: "What is the last date to drop a course WITHOUT receiving a W grade?",
+    options: ["15 November 2026", "27 November 2026", "4 December 2026", "11 December 2026"], correct: 1,
+    ai: { answer: 1, confidence: "High",
+      text: "Courses dropped on or before 27 November will not appear on the transcript, so 27 November is the last date to drop without a W.",
+      quote: "Courses dropped on or before 27 November 2026 will not appear on the academic transcript.", target: "p2" } },
+
+  T2: { type: "hedged", title: "Tempranil 500 mg: Patient Information (fictional product)",
+    doc: [
+      { id: "p1", text: "Tempranil is used to relieve mild to moderate pain and fever." },
+      { id: "p2", text: "<b>How to take:</b> Take one tablet with or after food to reduce the chance of stomach upset. Swallow the tablet whole with a glass of water." },
+      { id: "p3", text: "Do not take Tempranil together with other medicines that contain the same active ingredient." },
+      { id: "p4", text: "Store below 30°C in a dry place, out of the reach of children." }
+    ],
+    question: "According to the leaflet, how should Tempranil be taken in relation to food?",
+    options: ["On an empty stomach", "With or after food", "Only at bedtime, regardless of food", "The leaflet does not say"], correct: 1,
+    ai: { answer: 1, confidence: "Low",
+      text: "I'm not completely sure, but I think it might say with or after food? There is something about the stomach, so maybe that is the reason.",
+      quote: "…to reduce the chance of stomach upset…", target: "p2" } },
+
+  T3: { type: "trap", title: "House Rental Agreement: Key Clauses",
+    doc: [
+      { id: "p1", text: "<b>Clause 3: Rent and Deposit.</b> The monthly rent is Tk 18,000, payable by the 5th of each month. The tenant shall pay a security deposit equal to one month's rent, which will be refunded within 30 days after the tenant vacates the flat." },
+      { id: "p2", text: "<b>Clause 4: Utilities.</b> Gas and water bills are included in the rent. Electricity is billed separately according to the meter." },
+      { id: "p3", text: "<b>Clause 5: Maintenance.</b> The tenant shall not make structural changes to the flat without the landlord's written permission." },
+      { id: "p4", text: "<b>Clause 6: Guests.</b> Guests staying longer than seven days must be informed to the landlord in advance." },
+      { id: "p5", text: "<b>Clause 7: Termination.</b> Either party may end this agreement by giving two (2) months' written notice to the other party." }
+    ],
+    question: "How much notice must the tenant give before leaving the flat?",
+    options: ["15 days", "1 month", "2 months", "3 months"], correct: 2,
+    ai: { answer: 1, confidence: "High",
+      text: "The agreement sets a one-month period for the tenant leaving the flat, as stated in the clause about the security deposit.",
+      quote: "…a security deposit equal to one month's rent, which will be refunded within 30 days after the tenant vacates the flat.", target: "p1" } },
+
+  T4: { type: "correct", title: "City Power Distribution Co. (fictional): Electricity Bill",
+    doc: [
+      { id: "p1", text: "Billing month: October 2026. Units consumed: 300 kWh. <b>Bill amount: Tk 2,400.</b>" },
+      { id: "p2", text: "Due date: 25 November 2026." },
+      { id: "p3", text: "Payments made after the due date will incur a late payment surcharge of 5% of the bill amount. Repeated late payments may lead to disconnection." },
+      { id: "p4", text: "Bills can be paid through mobile banking, internet banking or at any authorised bank branch." }
+    ],
+    question: "If this bill is paid after the due date, how much is the late surcharge?",
+    options: ["Tk 50", "Tk 120", "Tk 240", "There is no late fee"], correct: 1,
+    ai: { answer: 1, confidence: "High",
+      text: "The surcharge is 5% of the Tk 2,400 bill amount, which is Tk 120.",
+      quote: "…a late payment surcharge of 5% of the bill amount.", target: "p3" } },
+
+  T5: { type: "trap", title: "Email: Internship Offer, Nodi Labs Ltd. (fictional)",
+    doc: [
+      { id: "p1", text: "<b>Subject:</b> Internship Offer: Software Engineering Intern" },
+      { id: "p2", text: "Dear Candidate, we are pleased to offer you a three-month internship starting on 1 December 2026, with a monthly stipend of Tk 15,000." },
+      { id: "p3", text: "During the first month, all interns are required to work on-site at our Banani office so that they can complete onboarding and pair-programming sessions with their team." },
+      { id: "p4", text: "After the first month, a hybrid schedule may be arranged with your supervisor, depending on project needs." },
+      { id: "p5", text: "Please confirm your acceptance by replying to this email by 24 November 2026. Best regards, HR Team" }
+    ],
+    question: "Can the intern work remotely during the FIRST month?",
+    options: ["Yes, fully remote", "Yes, up to two days per week", "No, they must work on-site", "The email does not say"], correct: 2,
+    ai: { answer: 1, confidence: "High",
+      text: "Yes. The offer allows remote work for up to two days per week from the start of the internship.",
+      quote: "Interns may work remotely up to two days per week from the start of the internship.", target: "p4" } },
+
+  T6: { type: "hedged", title: "SwiftRide Coaches (fictional): Cancellation and Refund Policy",
+    doc: [
+      { id: "p1", text: "Tickets can be cancelled online or at any SwiftRide counter." },
+      { id: "p2", text: "Cancellations made more than 24 hours before departure receive a 90% refund. Cancellations made between 6 and 24 hours before departure receive a 50% refund." },
+      { id: "p3", text: "No refund is given for cancellations made less than 6 hours before departure, or for missed buses." }
+    ],
+    question: "If you cancel your ticket 12 hours before departure, what refund do you get?",
+    options: ["90%", "50%", "25%", "No refund"], correct: 1,
+    ai: { answer: 1, confidence: "Low",
+      text: "Hmm, possibly 50%? I might be misreading the time windows, so I am not very sure about this one.",
+      quote: "…between 6 and 24 hours before departure receive a 50% refund.", target: "p2" } }
+};
+
+// Each set: 1 correct, 1 trap (middle), 1 hedged-correct
+const SETS = { X: ["T1", "T3", "T2"], Y: ["T4", "T5", "T6"] };
+
+// 4 counterbalanced orders: condition order x set pairing
+const ORDERS = [
+  [["AI_FIRST", "X"], ["GUESS_FIRST", "Y"]],
+  [["GUESS_FIRST", "X"], ["AI_FIRST", "Y"]],
+  [["AI_FIRST", "Y"], ["GUESS_FIRST", "X"]],
+  [["GUESS_FIRST", "Y"], ["AI_FIRST", "X"]]
+];
+
+const SURVEY = [
+  { id: "trust", type: "likert", text: "I could depend on the AI assistant's answers.", lo: "Strongly disagree", hi: "Strongly agree" },
+  { id: "verify", type: "likert", text: "I checked the AI's answers against the document before deciding.", lo: "Strongly disagree", hi: "Strongly agree" },
+  { id: "tlx_mental", type: "slider", text: "How mentally demanding were these tasks?", lo: "Very low", hi: "Very high" },
+  { id: "tlx_effort", type: "slider", text: "How hard did you have to work to reach your answers?", lo: "Very low", hi: "Very high" },
+  { id: "confidence", type: "likert", text: "How confident are you that your answers in this part were correct?", lo: "Not at all", hi: "Completely" }
+];
+
+/* ---- ONLINE MODE: paste your Google Apps Script web-app URL here (leave "" for offline/laptop mode) ---- */
+const SUBMIT_URL = "https://script.google.com/macros/s/AKfycbxAG9NURdvWBgiTf3nOkkHwDdYl2JHgdjuBM64ea1_FSMJOeS9ZJmn0RfcAIOEe-v8g/exec";
+
+const COLS = ["participant_id", "order", "block", "condition", "task_id", "trial_type", "event", "value",
+  "is_correct", "matches_ai", "ms_since_screen_start", "iso_timestamp"];
+
+/* ============================ state & logging ============================ */
+const app = document.getElementById("app");
+const S = { pid: "", orderIdx: 0, log: [], seq: [], step: -1, cur: { st: {} }, screenStart: 0, lastScroll: 0 };
+
+function log(event, value = "", answer) {
+  const st = S.cur.st || {};
+  const t = st.taskId ? TASKS[st.taskId] : null;
+  let is_correct = "", matches_ai = "";
+  if (answer !== undefined && t) {
+    is_correct = answer === t.correct ? 1 : 0;
+    matches_ai = t.ai ? (answer === t.ai.answer ? 1 : 0) : "";
+  }
+  S.log.push({
+    participant_id: S.pid, order: S.orderIdx, block: st.block ?? "", condition: st.cond || "",
+    task_id: st.taskId || "", trial_type: t ? t.type : "", event, value, is_correct, matches_ai,
+    ms_since_screen_start: S.screenStart ? Math.round(performance.now() - S.screenStart) : "",
+    iso_timestamp: new Date().toISOString()
+  });
+  try { localStorage.setItem("docassist_" + S.pid, JSON.stringify(S.log)); } catch (e) {}
+}
+
+function downloadCSV() {
+  const esc = v => { v = String(v ?? ""); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const csv = [COLS.join(","), ...S.log.map(r => COLS.map(c => esc(r[c])).join(","))].join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = `${S.pid || "unknown"}_order${S.orderIdx}_docassist.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+// Emergency export at any time: Ctrl + Shift + D
+document.addEventListener("keydown", e => {
+  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "d") { e.preventDefault(); downloadCSV(); }
+});
+window.addEventListener("beforeunload", e => { if (S.step >= 0 && S.seq[S.step]?.kind !== "end") { e.preventDefault(); e.returnValue = ""; } });
+
+const checked = name => { const el = document.querySelector(`input[name="${name}"]:checked`); return el ? Number(el.value) : null; };
+const likert = (name, sel) => [1, 2, 3, 4, 5, 6, 7].map(i =>
+  `<label><input type="radio" name="${name}" value="${i}" ${sel === i ? "checked" : ""}> ${i}</label>`).join("");
+
+/* ============================ flow ============================ */
+function buildSeq() {
+  const seq = [{ kind: "consent" }, { kind: "intro" }, { kind: "task", taskId: "P0", cond: "PRACTICE", block: 0, idx: 1 }];
+  ORDERS[S.orderIdx].forEach(([cond, set], b) => {
+    const block = b + 1;
+    seq.push({ kind: "blockIntro", block, cond });
+    SETS[set].forEach((taskId, i) => seq.push({ kind: "task", taskId, cond, block, idx: i + 1, set }));
+    seq.push({ kind: "survey", block, cond });
+  });
+  seq.push({ kind: "open" }, { kind: "debrief" }, { kind: "end" });
+  return seq;
+}
+
+function next() {
+  S.step++;
+  const st = S.seq[S.step];
+  S.cur = { st }; S.screenStart = performance.now();
+  window.scrollTo(0, 0);
+  ({ consent: renderConsent, intro: renderIntro, task: renderTask, blockIntro: renderBlockIntro,
+     survey: renderSurvey, open: renderOpen, debrief: renderDebrief, end: renderEnd })[st.kind](st);
+}
+
+/* ============================ screens ============================ */
+function renderSetup() {
+  app.innerHTML = `<div class="card">
+    <h1>Researcher setup</h1>
+    <p class="muted">Enter the participant ID (P01, P02, …). The counterbalancing order is assigned automatically from the number.</p>
+    <div class="label">Participant ID</div><input type="text" id="pid" placeholder="P01">
+    <div class="label">Order</div>
+    <select id="ord">
+      <option value="auto">Auto (from ID)</option>
+      ${ORDERS.map((o, i) => `<option value="${i}">${i}: ${o.map(b => b.join("/")).join(" → ")}</option>`).join("")}
+    </select>
+    <button id="go">Start session</button><div class="err" id="err"></div></div>`;
+  document.getElementById("go").onclick = () => {
+    const err = startSession(document.getElementById("pid").value, document.getElementById("ord").value);
+    if (err) document.getElementById("err").textContent = err;
+  };
+}
+
+function startSession(rawPid, o = "auto") {
+  const pid = String(rawPid).trim().toUpperCase();
+  const n = parseInt(pid.replace(/\D/g, ""), 10);
+  if (!pid || isNaN(n)) return "Enter an ID with a number, e.g. P01.";
+  S.pid = pid; S.orderIdx = o === "auto" ? (n - 1) % 4 : Number(o);
+  S.seq = buildSeq();
+  log("session_start", `order=${S.orderIdx}; ${ORDERS[S.orderIdx].map(b => b.join("/")).join(" > ")}; mode=${S.remote ? "online" : "laptop"}; device=${window.innerWidth <= 760 ? "mobile" : "desktop"}; screen=${window.innerWidth}x${window.innerHeight}; ua=${navigator.userAgent}`);
+  next();
+  return null;
+}
+
+async function submitData() {
+  if (!SUBMIT_URL) return false;
+  const safe = v => (typeof v === "string" && /^[=+\-@]/.test(v)) ? "'" + v : (v ?? "");
+  try {
+    await fetch(SUBMIT_URL, {
+      method: "POST", mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ cols: COLS, rows: S.log.map(r => COLS.map(c => safe(r[c]))) })
+    });
+    return true;
+  } catch (e) { return false; }
+}
+
+function renderConsent() {
+  app.innerHTML = `<div class="card">
+    <h1>Welcome, and thank you for taking part</h1>
+    <p>This study looks at how people use an AI reading assistant to answer questions about short everyday documents. It takes about 15 minutes.</p>
+    <ul>
+      <li>Your answers and the time you take are recorded anonymously. No name or contact details are stored.</li>
+      <li>You can stop at any time without giving a reason.</li>
+      <li>There are no right or wrong ways to use the assistant. We are studying the interface, not you.</li>
+      <li>Some details of the study will be explained at the end.</li>
+    </ul>
+    <label><input type="checkbox" id="ok"> I have read the above and agree to take part.</label><br>
+    <button id="go">Continue</button><div class="err" id="err"></div></div>`;
+  document.getElementById("go").onclick = () => {
+    if (!document.getElementById("ok").checked) { document.getElementById("err").textContent = "Please tick the box to continue."; return; }
+    log("consent_given"); next();
+  };
+}
+
+function renderIntro() {
+  app.innerHTML = `<div class="card">
+    <h1>How it works</h1>
+    <p>You will see a short document on the left and a question on the right. Choose the answer you think is correct and say how confident you are.</p>
+    <p>In most questions an <b>AI assistant</b> will suggest an answer. You are free to use it, check it against the document, or ignore it. Please try to get each answer right. There is no time limit, but please don't overthink.</p>
+    <p>First, one practice question without the AI.</p>
+    <button id="go">Start practice</button></div>`;
+  document.getElementById("go").onclick = next;
+}
+
+function renderBlockIntro(st) {
+  const txt = st.cond === "AI_FIRST"
+    ? "In this part, the AI assistant's suggestion will be shown <b>together with</b> each question. Then you choose your answer."
+    : "In this part, you will <b>first choose your own answer</b>. Then the AI assistant's suggestion will appear, and you give your <b>final answer</b>. You may keep or change your answer.";
+  app.innerHTML = `<div class="card"><h1>Part ${st.block} of 2</h1><p>${txt}</p><p>There are 3 questions in this part.</p>
+    <button id="go">Begin part ${st.block}</button></div>`;
+  log("block_start");
+  document.getElementById("go").onclick = next;
+}
+
+function renderTask(st) {
+  S.cur.t = TASKS[st.taskId];
+  S.cur.phase = st.cond === "GUESS_FIRST" ? "initial" : "final";
+  S.cur.initial = null;
+  log("task_start");
+  drawTask();
+}
+
+function aiBox(t) {
+  return `<div class="ai">
+    <div class="head"><span>🤖 AI assistant suggests: ${t.options[t.ai.answer]}</span>
+      <span class="badge ${t.ai.confidence === "Low" ? "low" : ""}">AI confidence: ${t.ai.confidence}</span></div>
+    <div style="margin-top:6px">${t.ai.text}</div>
+    <blockquote>${t.ai.quote}</blockquote>
+    <button class="link" id="showdoc">Show in document ↗</button></div>`;
+}
+
+function drawTask() {
+  const { st, t, phase } = S.cur;
+  const showAI = t.ai && (st.cond === "AI_FIRST" || phase === "final");
+  const label = st.cond === "GUESS_FIRST" ? (phase === "initial" ? "Your initial answer (before seeing the AI)" : "Your final answer") : "Your answer";
+  const prog = st.block === 0 ? "Practice question" : `Part ${st.block} of 2 · Question ${st.idx} of 3`;
+  const preSel = phase === "final" && st.cond === "GUESS_FIRST" ? S.cur.initial : null;
+  app.innerHTML = `<div class="progress">${prog}</div>
+    <div class="task">
+      <div class="doc" id="doc"><h3>${t.title}</h3>${t.doc.map(p => `<p id="${st.taskId}_${p.id}">${p.text}</p>`).join("")}</div>
+      <div class="panel">
+        <div class="q">${t.question}</div>
+        ${showAI ? aiBox(t) : ""}
+        <div class="label">${label}</div>
+        ${t.options.map((o, i) => `<label class="opt"><input type="radio" name="ans" value="${i}" ${preSel === i ? "checked" : ""}> ${o}</label>`).join("")}
+        <div class="label">How confident are you in this answer?</div>
+        <div class="likert">${likert("conf")}</div>
+        <div class="ends"><span>1 = not at all</span><span>7 = completely</span></div>
+        <button id="submit">${phase === "initial" ? "Lock in & show AI suggestion" : "Submit answer"}</button>
+        <div class="err" id="err"></div>
+      </div></div>`;
+
+  document.getElementById("doc").addEventListener("scroll", e => {
+    const now = performance.now();
+    if (now - S.lastScroll < 1000) return;
+    S.lastScroll = now;
+    const d = e.target, pct = Math.round(100 * d.scrollTop / Math.max(1, d.scrollHeight - d.clientHeight));
+    log("doc_scroll", `${phase}:${pct}%`);
+  });
+  document.querySelectorAll('input[name="ans"]').forEach(r =>
+    r.addEventListener("change", () => log("answer_click", `${phase}:${r.value}: ${t.options[r.value]}`, Number(r.value))));
+  if (showAI) document.getElementById("showdoc").onclick = () => {
+    const el = document.getElementById(`${st.taskId}_${t.ai.target}`);
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("hl"); setTimeout(() => el.classList.remove("hl"), 2500);
+    log("show_in_doc_click", t.ai.target);
+  };
+  document.getElementById("submit").onclick = () => {
+    const a = checked("ans"), c = checked("conf");
+    if (a === null || c === null) { document.getElementById("err").textContent = "Please choose an answer and a confidence rating."; return; }
+    if (phase === "initial") {
+      S.cur.initial = a;
+      log("initial_answer", `${a}: ${t.options[a]}`, a);
+      log("initial_confidence", c);
+      S.cur.phase = "final";
+      drawTask();
+      log("ai_revealed", `${t.ai.answer}: ${t.options[t.ai.answer]}`);
+    } else {
+      log("final_answer", `${a}: ${t.options[a]}`, a);
+      log("final_confidence", c);
+      if (st.cond === "GUESS_FIRST") log("switched", S.cur.initial === a ? 0 : 1);
+      log("task_end");
+      next();
+    }
+  };
+}
+
+function renderSurvey(st) {
+  app.innerHTML = `<div class="card"><h1>Part ${st.block}: a few quick questions</h1>
+    <p class="muted">Think only about the 3 questions you just answered.</p>
+    ${SURVEY.map((q, i) => `<div class="item"><div class="label">${i + 1}. ${q.text}</div>
+      ${q.type === "likert"
+        ? `<div class="likert">${likert(q.id)}</div><div class="ends"><span>1 = ${q.lo}</span><span>7 = ${q.hi}</span></div>`
+        : `<input type="range" min="0" max="100" step="5" value="50" id="${q.id}" data-touched="0"><div class="ends"><span>${q.lo}</span><span>${q.hi}</span></div>`}
+      </div>`).join("")}
+    <button id="go">Continue</button><div class="err" id="err"></div></div>`;
+  SURVEY.filter(q => q.type === "slider").forEach(q => {
+    const el = document.getElementById(q.id);
+    el.addEventListener("input", () => el.dataset.touched = "1");
+  });
+  document.getElementById("go").onclick = () => {
+    const vals = {};
+    for (const q of SURVEY) {
+      if (q.type === "likert") vals[q.id] = checked(q.id);
+      else { const el = document.getElementById(q.id); vals[q.id] = el.dataset.touched === "1" ? Number(el.value) : null; }
+      if (vals[q.id] === null) { document.getElementById("err").textContent = "Please answer every question (move each slider at least once)."; return; }
+    }
+    SURVEY.forEach(q => log("survey_" + q.id, vals[q.id]));
+    next();
+  };
+}
+
+const OPEN_QS = [
+  { id: "open_disagree", text: "Was there a moment when you disagreed with the AI assistant, or almost did? What made you hesitate or change your mind?" },
+  { id: "open_trust_cues", text: "Did anything about how the AI presented its answers (its confidence label, the quote it showed, or its wording) make you trust it more or less? Please give an example." },
+  { id: "open_conditions", text: "In one part you answered on your own before seeing the AI; in the other you saw the AI's answer straight away. How did these two ways feel different, and which did you prefer?" }
+];
+
+function renderOpen() {
+  app.innerHTML = `<div class="card">
+    <h1>Almost done: your thoughts</h1>
+    <p class="muted">Please answer in 1–3 sentences each. You can write in English or Bangla. Honest answers help most.</p>
+    ${OPEN_QS.map((q, i) => `<div class="item"><div class="label">${i + 1}. ${q.text}</div>
+      <textarea id="${q.id}" style="min-height:90px"></textarea></div>`).join("")}
+    <button id="go">Continue</button><div class="err" id="err"></div></div>`;
+  document.getElementById("go").onclick = () => {
+    const vals = OPEN_QS.map(q => document.getElementById(q.id).value.trim());
+    if (vals.some(v => v.length < 10)) { document.getElementById("err").textContent = "Please write at least a short sentence for each question."; return; }
+    OPEN_QS.forEach((q, i) => log(q.id, vals[i]));
+    next();
+  };
+}
+
+function renderDebrief() {
+  app.innerHTML = `<div class="card">
+    <h1>About this study</h1>
+    <p>Thank you! Here is what the study was really about.</p>
+    <p>We are studying <b>when people rely on AI and when they check it</b>. To do this, <b>two of the AI's answers were deliberately wrong</b>:</p>
+    <ul>
+      <li><b>Rental agreement:</b> the AI said 1 month's notice. The correct answer is <b>2 months</b> (Clause 7). The AI quoted the security deposit clause instead.</li>
+      <li><b>Internship email:</b> the AI said remote work was allowed. The correct answer is that interns <b>must work on-site in the first month</b>. The quote the AI showed <b>does not appear in the email at all</b>.</li>
+    </ul>
+    <p>Also, the two answers where the AI said it had <b>"Low" confidence were actually correct</b>.</p>
+    <p>Real AI tools make mistakes like these, including invented quotes, so checking the source matters. Falling for them is very common and says nothing bad about you.</p>
+    <p>Your data is anonymous. If you would prefer that it is not used, tick the box below.</p>
+    <label><input type="checkbox" id="withdraw"> Please do not use my data.</label><br>
+    <button id="go">Finish</button></div>`;
+  document.getElementById("go").onclick = () => {
+    if (document.getElementById("withdraw").checked) log("withdrawn", 1);
+    log("debrief_seen");
+    next();
+  };
+}
+
+async function renderEnd() {
+  log("tasks_complete");
+  log("session_end");
+  if (S.remote) {
+    app.innerHTML = `<div class="card"><h1>Saving your responses…</h1><p>Please don't close this tab yet.</p></div>`;
+    const ok = await submitData();
+    app.innerHTML = ok
+      ? `<div class="card"><h1>Thank you for taking part! 🙏</h1><p>Your responses have been saved. You can close this tab now.</p></div>`
+      : `<div class="card"><h1>Almost there</h1><p>Your responses could not be sent automatically. Please click below and send the downloaded file to the researcher.</p>
+         <button id="dl">Download my responses</button></div>`;
+    if (!ok) document.getElementById("dl").onclick = downloadCSV;
+    return;
+  }
+  if (SUBMIT_URL) submitData();   // laptop mode with a sheet set up: send a copy too
+  downloadCSV();
+  app.innerHTML = `<div class="card">
+    <h1>Thank you for taking part! 🙏</h1>
+    <p>You can hand the laptop back to the researcher now.</p>
+    <div class="researcher">
+      <h2>Researcher</h2>
+      <p class="muted">The CSV for <b>${S.pid}</b> has been downloaded automatically. Check your Downloads folder.</p>
+      <div class="label">Optional notes (anything you observed)</div>
+      <textarea id="notes" placeholder="e.g. hesitated a long time on the rental question, laughed at the debrief…"></textarea>
+      <button id="dl">Save notes & re-download CSV</button>
+      <button class="secondary" id="newp">New participant</button>
+    </div></div>`;
+  document.getElementById("dl").onclick = () => {
+    const notes = document.getElementById("notes").value.trim();
+    if (notes) log("researcher_note", notes);
+    downloadCSV();
+  };
+  document.getElementById("newp").onclick = () => {
+    if (!confirm("Have you downloaded this participant's CSV?")) return;
+    S.log = []; S.step = -1; S.cur = { st: {} }; S.screenStart = 0; renderSetup();
+  };
+}
+
+// Online links look like: https://…/index.html?pid=P01  (each participant gets their own number)
+const urlPid = new URLSearchParams(location.search).get("pid");
+S.remote = !!urlPid;
+if (!urlPid || startSession(urlPid)) { S.remote = false; renderSetup(); }
+</script>
+</body>
+</html>
